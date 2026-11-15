@@ -1,30 +1,51 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 
 import 'package:app/main.dart';
+import 'package:app/src/navigation/app_shell.dart';
+import 'package:app/src/navigation/minimal_morphing_bottom_bar.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  testWidgets('Minimalist morphing bottom navigation renders all 4 tabs and switches views', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const MyApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Verify presence of MinimalMorphingBottomBar
+    expect(find.byType(MinimalMorphingBottomBar), findsOneWidget);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    // Verify all four tabs exist by icons
+    for (final tab in AppTab.values) {
+      expect(find.byIcon(tab.icon), findsWidgets);
+    }
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Default active tab is Expenses, its label text is visible
+    expect(
+      find.descendant(
+        of: find.byType(MinimalMorphingBottomBar),
+        matching: find.text('Expenses'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(ExpensesView), findsOneWidget);
+
+    // Switch through Todos, Vault, Profile, and back to Expenses
+    for (final tab in [
+      AppTab.todos,
+      AppTab.vault,
+      AppTab.profile,
+      AppTab.expenses,
+    ]) {
+      await tester.tap(find.byIcon(tab.icon).first);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byType(FHeader),
+          matching: find.text(tab.label),
+        ),
+        findsOneWidget,
+      );
+    }
   });
 }
