@@ -1,14 +1,16 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 
 import 'package:app/src/navigation/app_shell.dart';
+import 'package:app/src/screens/auth/login_screen.dart';
+import 'package:app/src/services/auth_service.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
-/// Root application widget configured with Electric Mint branding and balanced typography.
+/// Root application widget configured with Electric Mint branding and offline-first auth state.
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -22,10 +24,6 @@ class MyApp extends StatefulWidget {
   static const Color lightPrimaryGreen = Color(0xFF16A34A);
 
   static FThemeData _resolveTheme(Brightness brightness) {
-    final isTouch =
-        defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.android;
-
     final FColors colors;
     if (brightness == Brightness.dark) {
       colors = FColors.neutralDark.copyWith(
@@ -39,14 +37,13 @@ class MyApp extends StatefulWidget {
       );
     }
 
-    // Balanced typography: clean, legible, and comfortably proportioned
     final typography = FTypography.inherit(
       colors: colors,
-      touch: isTouch,
+      touch: true,
     ).scale(sizeScalar: 0.96);
 
     return FThemeData(
-      touch: isTouch,
+      touch: true,
       colors: colors,
       typography: typography,
     );
@@ -57,6 +54,12 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    AuthService.instance.init();
+  }
+
   @override
   Widget build(BuildContext context) {
     final lightTheme = MyApp._resolveTheme(Brightness.light);
@@ -94,7 +97,26 @@ class _MyAppState extends State<MyApp> {
               ),
             );
           },
-          home: const AppShell(),
+          home: ListenableBuilder(
+            listenable: AuthService.instance,
+            builder: (context, _) {
+              if (!AuthService.instance.isInitialized) {
+                return const Scaffold(
+                  body: Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                  ),
+                );
+              }
+
+              return AuthService.instance.isAuthenticated
+                  ? const AppShell()
+                  : const LoginScreen();
+            },
+          ),
         );
       },
     );
