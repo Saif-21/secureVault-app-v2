@@ -154,6 +154,165 @@ class ApiService {
     }
   }
 
+  // ==========================================
+  // SECURE VAULT / PASSWORD MANAGER APIS (/api/pm)
+  // ==========================================
+
+  /// Fetch all groups: GET /api/pm/groups
+  Future<List<Map<String, dynamic>>> getVaultGroups(String token) async {
+    final url = Uri.parse('$baseUrl/pm/groups');
+    try {
+      final response = await http
+          .get(url, headers: _headers(token))
+          .timeout(_timeout);
+      final json = _parseResponse(response);
+      final rawList = json['data'] as List<dynamic>? ?? [];
+      return rawList.whereType<Map<String, dynamic>>().toList();
+    } on SocketException catch (_) {
+      throw ApiException('Network unreachable', isOffline: true);
+    } on TimeoutException catch (_) {
+      throw ApiException('Network timeout', isOffline: true);
+    }
+  }
+
+  /// Create a new group: POST /api/pm/groups
+  Future<Map<String, dynamic>> createVaultGroup({
+    required String token,
+    required String name,
+    String? icon,
+    String? color,
+    String? description,
+  }) async {
+    final url = Uri.parse('$baseUrl/pm/groups');
+    final payload = {
+      'name': name.trim(),
+      if (icon != null && icon.isNotEmpty) 'icon': icon,
+      if (color != null && color.isNotEmpty) 'color': color,
+      if (description != null && description.isNotEmpty) 'description': description,
+    };
+    try {
+      final response = await http
+          .post(url, headers: _headers(token), body: jsonEncode(payload))
+          .timeout(_timeout);
+      final json = _parseResponse(response);
+      return (json['data'] as Map<String, dynamic>?) ?? {};
+    } on SocketException catch (_) {
+      throw ApiException('Network unreachable', isOffline: true);
+    } on TimeoutException catch (_) {
+      throw ApiException('Network timeout', isOffline: true);
+    }
+  }
+
+  /// Delete a group: DELETE /api/pm/groups/:groupId
+  Future<void> deleteVaultGroup({
+    required String token,
+    required String groupId,
+  }) async {
+    final url = Uri.parse('$baseUrl/pm/groups/$groupId');
+    try {
+      final response = await http
+          .delete(url, headers: _headers(token))
+          .timeout(_timeout);
+      _parseResponse(response);
+    } on SocketException catch (_) {
+      throw ApiException('Network unreachable', isOffline: true);
+    } on TimeoutException catch (_) {
+      throw ApiException('Network timeout', isOffline: true);
+    }
+  }
+
+  /// Fetch all passwords: GET /api/pm/passwords
+  Future<List<Map<String, dynamic>>> getVaultPasswords({
+    required String token,
+    String? groupId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/pm/passwords').replace(
+      queryParameters: groupId != null ? {'groupId': groupId} : null,
+    );
+    try {
+      final response = await http
+          .get(uri, headers: _headers(token))
+          .timeout(_timeout);
+      final json = _parseResponse(response);
+      final rawList = json['data'] as List<dynamic>? ?? [];
+      return rawList.whereType<Map<String, dynamic>>().toList();
+    } on SocketException catch (_) {
+      throw ApiException('Network unreachable', isOffline: true);
+    } on TimeoutException catch (_) {
+      throw ApiException('Network timeout', isOffline: true);
+    }
+  }
+
+  /// Add a password: POST /api/pm/passwords
+  Future<Map<String, dynamic>> addVaultPassword({
+    required String token,
+    required String title,
+    required String username,
+    required String password,
+    String? website,
+    String? notes,
+    String? groupId,
+  }) async {
+    final url = Uri.parse('$baseUrl/pm/passwords');
+    final payload = {
+      'title': title.trim(),
+      'username': username.trim(),
+      'password': password.trim(),
+      if (website != null && website.trim().isNotEmpty) 'website': website.trim(),
+      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      if (groupId != null && groupId.isNotEmpty) 'groupId': groupId,
+    };
+    try {
+      final response = await http
+          .post(url, headers: _headers(token), body: jsonEncode(payload))
+          .timeout(_timeout);
+      final json = _parseResponse(response);
+      return (json['data'] as Map<String, dynamic>?) ?? {};
+    } on SocketException catch (_) {
+      throw ApiException('Network unreachable', isOffline: true);
+    } on TimeoutException catch (_) {
+      throw ApiException('Network timeout', isOffline: true);
+    }
+  }
+
+  /// Update a password: PATCH /api/pm/passwords/:passwordId
+  Future<Map<String, dynamic>> updateVaultPassword({
+    required String token,
+    required String passwordId,
+    required Map<String, dynamic> data,
+  }) async {
+    final url = Uri.parse('$baseUrl/pm/passwords/$passwordId');
+    try {
+      final response = await http
+          .patch(url, headers: _headers(token), body: jsonEncode(data))
+          .timeout(_timeout);
+      final json = _parseResponse(response);
+      return (json['data'] as Map<String, dynamic>?) ?? {};
+    } on SocketException catch (_) {
+      throw ApiException('Network unreachable', isOffline: true);
+    } on TimeoutException catch (_) {
+      throw ApiException('Network timeout', isOffline: true);
+    }
+  }
+
+  /// Delete a password: DELETE /api/pm/passwords/:passwordId
+  Future<void> deleteVaultPassword({
+    required String token,
+    required String passwordId,
+  }) async {
+    final url = Uri.parse('$baseUrl/pm/passwords/$passwordId');
+    try {
+      final response = await http
+          .delete(url, headers: _headers(token))
+          .timeout(_timeout);
+      _parseResponse(response);
+    } on SocketException catch (_) {
+      throw ApiException('Network unreachable', isOffline: true);
+    } on TimeoutException catch (_) {
+      throw ApiException('Network timeout', isOffline: true);
+    }
+  }
+
   /// Parse response and handle backend ApiResponse / ApiError structure
   Map<String, dynamic> _parseResponse(http.Response response) {
     Map<String, dynamic> jsonBody;

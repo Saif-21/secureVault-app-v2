@@ -308,4 +308,127 @@ void main() {
     expect(find.text('Exit App?'), findsNothing);
     expect(find.byType(ExpensesView), findsOneWidget);
   });
+
+  testWidgets('VaultView displays categories, filters credentials, toggles password visibility, and creates new category and password', (
+    WidgetTester tester,
+  ) async {
+    AuthService.instance.setMockUser(
+      const UserModel(
+        id: 'test_user_vault',
+        name: 'Saif Khan',
+        email: 'saif@example.com',
+        mobile: '9988776655',
+      ),
+    );
+
+    await tester.pumpWidget(const MyApp());
+    await tester.pumpAndSettle();
+
+    // Navigate to Vault tab
+    await tester.tap(
+      find.descendant(
+        of: find.byType(MinimalMorphingBottomBar),
+        matching: find.byIcon(AppTab.vault.icon),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify presence of VaultView & section elements
+    expect(find.byType(VaultView), findsOneWidget);
+    expect(find.text('Credentials & Passwords'), findsNothing); // Removed as requested
+    expect(find.text('Secure Vault'), findsOneWidget);
+
+    // Verify presence of reference credential "Facebook"
+    expect(find.text('Facebook'), findsOneWidget);
+    expect(find.text('facebook.com'), findsOneWidget);
+    expect(find.text('••••••••••••'), findsWidgets);
+
+    // Toggle password visibility on first credential card
+    await tester.tap(find.byIcon(FLucideIcons.eye).first);
+    await tester.pumpAndSettle();
+    expect(find.byIcon(FLucideIcons.eyeOff), findsWidgets);
+
+    // Filter by 'Financial' category
+    await tester.tap(find.text('Financial').first);
+    await tester.pumpAndSettle();
+    expect(find.text('HDFC NetBanking'), findsOneWidget);
+    expect(find.text('Facebook'), findsNothing);
+
+    // Filter back to 'All'
+    await tester.tap(find.text('All'));
+    await tester.pumpAndSettle();
+    expect(find.text('Facebook'), findsOneWidget);
+
+    // Tap Add Category button in the filter strip
+    await tester.tap(find.byIcon(FLucideIcons.folderPlus));
+    await tester.pumpAndSettle();
+    expect(find.text('Add New Category'), findsOneWidget);
+
+    // Enter new category name and save
+    await tester.enterText(find.widgetWithText(TextField, 'e.g., Gaming, Streaming, Work'), 'Gaming');
+    await tester.tap(find.byIcon(FLucideIcons.gamepad2));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create Category'));
+    await tester.pumpAndSettle();
+
+    // Verify "Gaming" category appears in filter pills
+    expect(find.text('Gaming'), findsOneWidget);
+    ScaffoldMessenger.of(tester.element(find.byType(VaultView))).hideCurrentSnackBar();
+    await tester.pumpAndSettle();
+
+    // Tap Add Password button
+    await tester.tap(find.byIcon(FLucideIcons.plus).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Add New Password'), findsOneWidget);
+    expect(find.text('Secure your digital life'), findsOneWidget);
+
+    // Fill in new password details
+    await tester.enterText(find.widgetWithText(TextField, 'e.g., Facebook, Gmail, Netflix'), 'Steam Vault');
+    await tester.enterText(find.widgetWithText(TextField, 'your.email@example.com'), 'gamer@steam.com');
+    await tester.enterText(find.widgetWithText(TextField, 'Enter your password'), 'GamerPass#99');
+
+    // Tap "Save Password"
+    await tester.ensureVisible(find.text('Save Password'));
+    await tester.tap(find.text('Save Password'));
+    await tester.pumpAndSettle();
+    ScaffoldMessenger.of(tester.element(find.byType(VaultView))).hideCurrentSnackBar();
+    await tester.pumpAndSettle();
+
+    // Verify newly added credential appears in the list
+    expect(find.text('Steam Vault'), findsOneWidget);
+    expect(find.text('gamer@steam.com'), findsOneWidget);
+
+    // Verify presence of "Details" button and "Edit" button
+    expect(find.text('Details'), findsWidgets);
+    expect(find.text('Edit'), findsWidgets);
+
+    // Verify notes are shown on credential cards
+    expect(find.text('Notes'), findsWidgets);
+
+    // Tap "Details" button on a credential card to open details sheet
+    await tester.tap(find.text('Details').at(1));
+    await tester.pumpAndSettle();
+
+    // Verify Details sheet opens with website URL and secure storage status (No AES-256)
+    expect(find.text('Website URL'), findsOneWidget);
+    expect(find.text('Stored securely on device'), findsOneWidget);
+    expect(find.text('Edit Password'), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+
+    // Close details sheet
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    // Tap "Edit" button on a credential card to open edit drawer
+    await tester.tap(find.text('Edit').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Edit Password'), findsOneWidget);
+    expect(find.text('Update credential details'), findsOneWidget);
+    expect(find.text('Save Changes'), findsOneWidget);
+
+    // Close edit drawer
+    await tester.ensureVisible(find.text('Cancel'));
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+  });
 }
