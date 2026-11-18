@@ -31,6 +31,68 @@ enum AppTab {
   final IconData icon;
 }
 
+/// Tactile micro-interaction wrapper providing subtle scale bounce feedback on press.
+class AnimatedPressable extends StatefulWidget {
+  const AnimatedPressable({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.scaleFactor = 0.96,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final double scaleFactor;
+
+  @override
+  State<AnimatedPressable> createState() => _AnimatedPressableState();
+}
+
+class _AnimatedPressableState extends State<AnimatedPressable> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 90),
+      reverseDuration: const Duration(milliseconds: 130),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: widget.scaleFactor).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _controller.forward(),
+      onTapUp: (_) {
+        _controller.reverse();
+        widget.onTap?.call();
+      },
+      onTapCancel: () => _controller.reverse(),
+      child: AnimatedBuilder(
+        animation: _scaleAnimation,
+        builder: (context, child) => Transform.scale(
+          scale: _scaleAnimation.value,
+          child: child,
+        ),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 /// Root application shell with balanced, comfortable typography and component sizes.
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -560,77 +622,105 @@ class ExpensesView extends StatelessWidget {
     final amountController = TextEditingController();
     String selectedCategory = 'Food & Drinks';
     String selectedType = 'Expense';
+    bool isSubmitting = false;
 
     showDialog<void>(
       context: context,
       builder: (dialogCtx) {
-        final theme = dialogCtx.theme;
-        return AlertDialog(
-          backgroundColor: theme.colors.card,
-          title: Text('Add Transaction (₹)', style: theme.cardStyle.titleTextStyle),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(labelText: 'Description (e.g. Groceries, Coffee)'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Amount (₹)', prefixText: '₹ '),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedCategory,
-                  items: const [
-                    DropdownMenuItem(value: 'Food & Drinks', child: Text('Food & Drinks')),
-                    DropdownMenuItem(value: 'Groceries', child: Text('Groceries')),
-                    DropdownMenuItem(value: 'Utilities', child: Text('Utilities')),
-                    DropdownMenuItem(value: 'Salary', child: Text('Salary / Income')),
-                    DropdownMenuItem(value: 'Shopping', child: Text('Shopping')),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final theme = dialogCtx.theme;
+            return AlertDialog(
+              backgroundColor: theme.colors.card,
+              title: Text('Add Transaction (₹)', style: theme.cardStyle.titleTextStyle),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(labelText: 'Description (e.g. Groceries, Coffee)'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Amount (₹)', prefixText: '₹ '),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedCategory,
+                      items: const [
+                        DropdownMenuItem(value: 'Food & Drinks', child: Text('Food & Drinks')),
+                        DropdownMenuItem(value: 'Groceries', child: Text('Groceries')),
+                        DropdownMenuItem(value: 'Utilities', child: Text('Utilities')),
+                        DropdownMenuItem(value: 'Salary', child: Text('Salary / Income')),
+                        DropdownMenuItem(value: 'Shopping', child: Text('Shopping')),
+                      ],
+                      onChanged: (val) => selectedCategory = val ?? selectedCategory,
+                      decoration: const InputDecoration(labelText: 'Category'),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedType,
+                      items: const [
+                        DropdownMenuItem(value: 'Expense', child: Text('Expense')),
+                        DropdownMenuItem(value: 'Income', child: Text('Income')),
+                        DropdownMenuItem(value: 'Borrowed', child: Text('Borrowed')),
+                      ],
+                      onChanged: (val) => selectedType = val ?? selectedType,
+                      decoration: const InputDecoration(labelText: 'Transaction Type'),
+                    ),
                   ],
-                  onChanged: (val) => selectedCategory = val ?? selectedCategory,
-                  decoration: const InputDecoration(labelText: 'Category'),
                 ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedType,
-                  items: const [
-                    DropdownMenuItem(value: 'Expense', child: Text('Expense')),
-                    DropdownMenuItem(value: 'Income', child: Text('Income')),
-                    DropdownMenuItem(value: 'Borrowed', child: Text('Borrowed')),
-                  ],
-                  onChanged: (val) => selectedType = val ?? selectedType,
-                  decoration: const InputDecoration(labelText: 'Transaction Type'),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.of(dialogCtx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final title = titleController.text.trim();
+                          final amount = double.tryParse(amountController.text.trim()) ?? 0.0;
+                          if (title.isNotEmpty && amount > 0) {
+                            setDialogState(() => isSubmitting = true);
+                            HapticFeedback.mediumImpact();
+                            await Future.delayed(const Duration(milliseconds: 220));
+                            OfflineStore.instance.addExpense(
+                              title: title,
+                              category: selectedCategory,
+                              amount: amount,
+                              type: selectedType,
+                            );
+                          }
+                          if (dialogCtx.mounted) {
+                            Navigator.of(dialogCtx).pop();
+                          }
+                        },
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: isSubmitting
+                        ? SizedBox(
+                            key: const ValueKey('expense_spinner'),
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: theme.colors.primaryForeground,
+                            ),
+                          )
+                        : const Text(
+                            'Add Transaction',
+                            key: ValueKey('expense_text'),
+                          ),
+                  ),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogCtx).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final title = titleController.text.trim();
-                final amount = double.tryParse(amountController.text.trim()) ?? 0.0;
-                if (title.isNotEmpty && amount > 0) {
-                  OfflineStore.instance.addExpense(
-                    title: title,
-                    category: selectedCategory,
-                    amount: amount,
-                    type: selectedType,
-                  );
-                }
-                Navigator.of(dialogCtx).pop();
-              },
-              child: const Text('Add Transaction'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -872,56 +962,84 @@ class TodosView extends StatelessWidget {
     final titleController = TextEditingController();
     final amountController = TextEditingController();
     final dueDateController = TextEditingController(text: 'Due Tomorrow');
+    bool isSubmitting = false;
 
     showDialog<void>(
       context: context,
       builder: (dialogCtx) {
-        final theme = dialogCtx.theme;
-        return AlertDialog(
-          backgroundColor: theme.colors.card,
-          title: Text('New Todo Reminder', style: theme.cardStyle.titleTextStyle),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                decoration: const InputDecoration(labelText: 'Task title'),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final theme = dialogCtx.theme;
+            return AlertDialog(
+              backgroundColor: theme.colors.card,
+              title: Text('New Todo Reminder', style: theme.cardStyle.titleTextStyle),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(labelText: 'Task title'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: dueDateController,
+                    decoration: const InputDecoration(labelText: 'Due Date'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Amount (Optional ₹)', prefixText: '₹ '),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: dueDateController,
-                decoration: const InputDecoration(labelText: 'Due Date'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Amount (Optional ₹)', prefixText: '₹ '),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogCtx).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final title = titleController.text.trim();
-                final dueDate = dueDateController.text.trim();
-                final amount = double.tryParse(amountController.text.trim());
-                if (title.isNotEmpty) {
-                  OfflineStore.instance.addTodo(
-                    title: title,
-                    dueDate: dueDate.isNotEmpty ? dueDate : 'Upcoming',
-                    amount: amount,
-                  );
-                }
-                Navigator.of(dialogCtx).pop();
-              },
-              child: const Text('Save Todo'),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.of(dialogCtx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final title = titleController.text.trim();
+                          final dueDate = dueDateController.text.trim();
+                          final amount = double.tryParse(amountController.text.trim());
+                          if (title.isNotEmpty) {
+                            setDialogState(() => isSubmitting = true);
+                            HapticFeedback.mediumImpact();
+                            await Future.delayed(const Duration(milliseconds: 220));
+                            OfflineStore.instance.addTodo(
+                              title: title,
+                              dueDate: dueDate.isNotEmpty ? dueDate : 'Upcoming',
+                              amount: amount,
+                            );
+                          }
+                          if (dialogCtx.mounted) {
+                            Navigator.of(dialogCtx).pop();
+                          }
+                        },
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: isSubmitting
+                        ? SizedBox(
+                            key: const ValueKey('todo_spinner'),
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: theme.colors.primaryForeground,
+                            ),
+                          )
+                        : const Text(
+                            'Save Todo',
+                            key: ValueKey('todo_text'),
+                          ),
+                  ),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -1179,6 +1297,7 @@ class _VaultViewState extends State<VaultView> {
     final nameController = TextEditingController();
     String selectedIconKey = 'folder';
     String? localError;
+    bool isSubmitting = false;
 
     const availableIcons = <Map<String, dynamic>>[
       {'key': 'folder', 'icon': FLucideIcons.folder, 'name': 'Folder'},
@@ -1424,7 +1543,7 @@ class _VaultViewState extends State<VaultView> {
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                   padding: const EdgeInsets.symmetric(vertical: 13),
                                 ),
-                                onPressed: () => Navigator.of(sheetCtx).pop(),
+                                onPressed: isSubmitting ? null : () => Navigator.of(sheetCtx).pop(),
                                 child: Text('Cancel', style: TextStyle(color: theme.colors.foreground)),
                               ),
                             ),
@@ -1438,20 +1557,52 @@ class _VaultViewState extends State<VaultView> {
                                   padding: const EdgeInsets.symmetric(vertical: 13),
                                   elevation: 0,
                                 ),
-                                onPressed: () {
-                                  final name = nameController.text.trim();
-                                  if (name.isEmpty) {
-                                    setModalState(() => localError = 'Please enter a category name');
-                                    return;
-                                  }
-                                  OfflineStore.instance.addVaultCategory(name: name, emoji: selectedIconKey);
-                                  HapticFeedback.lightImpact();
-                                  Navigator.of(sheetCtx).pop();
-                                  showAppSnackBar(parentContext, 'Category "$name" created!');
-                                },
-                                child: const Text(
-                                  'Create Category',
-                                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                                onPressed: isSubmitting
+                                    ? null
+                                    : () async {
+                                        final name = nameController.text.trim();
+                                        if (name.isEmpty) {
+                                          setModalState(() => localError = 'Please enter a category name');
+                                          return;
+                                        }
+                                        setModalState(() {
+                                          localError = null;
+                                          isSubmitting = true;
+                                        });
+                                        HapticFeedback.mediumImpact();
+                                        await Future.delayed(const Duration(milliseconds: 260));
+                                        OfflineStore.instance.addVaultCategory(name: name, emoji: selectedIconKey);
+                                        if (sheetCtx.mounted) {
+                                          Navigator.of(sheetCtx).pop();
+                                        }
+                                        if (parentContext.mounted) {
+                                          showAppSnackBar(parentContext, 'Category "$name" created!');
+                                        }
+                                      },
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 180),
+                                  child: isSubmitting
+                                      ? SizedBox(
+                                          key: const ValueKey('category_spinner'),
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.2,
+                                            color: theme.colors.primaryForeground,
+                                          ),
+                                        )
+                                      : const Row(
+                                          key: ValueKey('category_content'),
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(FLucideIcons.plus, size: 15),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              'Create Category',
+                                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                                            ),
+                                          ],
+                                        ),
                                 ),
                               ),
                             ),
@@ -1487,6 +1638,7 @@ class _VaultViewState extends State<VaultView> {
 
     bool obscurePassword = true;
     String? localError;
+    bool isSubmitting = false;
 
     showModalBottomSheet<void>(
       context: context,
@@ -1920,59 +2072,85 @@ class _VaultViewState extends State<VaultView> {
                                   padding: const EdgeInsets.symmetric(vertical: 13),
                                   elevation: 0,
                                 ),
-                                onPressed: () {
-                                  final title = titleController.text.trim();
-                                  final username = usernameController.text.trim();
-                                  final password = passwordController.text.trim();
-                                  final website = websiteController.text.trim();
-                                  final notes = notesController.text.trim();
+                                onPressed: isSubmitting
+                                    ? null
+                                    : () async {
+                                        final title = titleController.text.trim();
+                                        final username = usernameController.text.trim();
+                                        final password = passwordController.text.trim();
+                                        final website = websiteController.text.trim();
+                                        final notes = notesController.text.trim();
 
-                                  if (title.isEmpty) {
-                                    setModalState(() => localError = 'Please enter a title (e.g. Facebook)');
-                                    return;
-                                  }
-                                  if (username.isEmpty) {
-                                    setModalState(() => localError = 'Please enter username or email');
-                                    return;
-                                  }
-                                  if (password.isEmpty) {
-                                    setModalState(() => localError = 'Please enter a password');
-                                    return;
-                                  }
+                                        if (title.isEmpty) {
+                                          setModalState(() => localError = 'Please enter a title (e.g. Facebook)');
+                                          return;
+                                        }
+                                        if (username.isEmpty) {
+                                          setModalState(() => localError = 'Please enter username or email');
+                                          return;
+                                        }
+                                        if (password.isEmpty) {
+                                          setModalState(() => localError = 'Please enter a password');
+                                          return;
+                                        }
 
-                                  final cat = store.vaultCategories.firstWhere(
-                                    (c) => c.name.toLowerCase() == selectedCategory.toLowerCase(),
-                                    orElse: () => const VaultCategory(id: 'work', name: 'Work', emoji: '📁'),
-                                  );
+                                        final cat = store.vaultCategories.firstWhere(
+                                          (c) => c.name.toLowerCase() == selectedCategory.toLowerCase(),
+                                          orElse: () => const VaultCategory(id: 'work', name: 'Work', emoji: 'folder'),
+                                        );
 
-                                  store.addVaultItem(
-                                    title: title,
-                                    username: username,
-                                    password: password,
-                                    group: cat.name,
-                                    website: website.isNotEmpty ? website : null,
-                                    notes: notes.isNotEmpty ? notes : null,
-                                    iconEmoji: cat.emoji,
-                                  );
+                                        setModalState(() {
+                                          localError = null;
+                                          isSubmitting = true;
+                                        });
+                                        HapticFeedback.mediumImpact();
+                                        await Future.delayed(const Duration(milliseconds: 260));
 
-                                  HapticFeedback.lightImpact();
-                                  Navigator.of(sheetCtx).pop();
-                                  showAppSnackBar(parentContext, 'Password for "$title" saved to vault!');
-                                },
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Text('💾', style: TextStyle(fontSize: 14)),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Save Password',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14,
-                                        color: theme.colors.primaryForeground,
-                                      ),
-                                    ),
-                                  ],
+                                        store.addVaultItem(
+                                          title: title,
+                                          username: username,
+                                          password: password,
+                                          group: cat.name,
+                                          website: website.isNotEmpty ? website : null,
+                                          notes: notes.isNotEmpty ? notes : null,
+                                          iconEmoji: cat.emoji,
+                                        );
+
+                                        if (sheetCtx.mounted) {
+                                          Navigator.of(sheetCtx).pop();
+                                        }
+                                        if (parentContext.mounted) {
+                                          showAppSnackBar(parentContext, 'Password for "$title" saved to vault!');
+                                        }
+                                      },
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 180),
+                                  child: isSubmitting
+                                      ? SizedBox(
+                                          key: const ValueKey('add_pw_spinner'),
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.2,
+                                            color: theme.colors.primaryForeground,
+                                          ),
+                                        )
+                                      : Row(
+                                          key: const ValueKey('add_pw_content'),
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(FLucideIcons.check, size: 16, color: theme.colors.primaryForeground),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'Save Password',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14,
+                                                color: theme.colors.primaryForeground,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                 ),
                               ),
                             ),
@@ -2006,6 +2184,7 @@ class _VaultViewState extends State<VaultView> {
     String selectedCategory = item.group;
     bool obscurePassword = true;
     String? localError;
+    bool isSubmitting = false;
 
     showModalBottomSheet<void>(
       context: context,
@@ -2439,60 +2618,86 @@ class _VaultViewState extends State<VaultView> {
                                   padding: const EdgeInsets.symmetric(vertical: 13),
                                   elevation: 0,
                                 ),
-                                onPressed: () {
-                                  final title = titleController.text.trim();
-                                  final username = usernameController.text.trim();
-                                  final password = passwordController.text.trim();
-                                  final website = websiteController.text.trim();
-                                  final notes = notesController.text.trim();
+                                onPressed: isSubmitting
+                                    ? null
+                                    : () async {
+                                        final title = titleController.text.trim();
+                                        final username = usernameController.text.trim();
+                                        final password = passwordController.text.trim();
+                                        final website = websiteController.text.trim();
+                                        final notes = notesController.text.trim();
 
-                                  if (title.isEmpty) {
-                                    setModalState(() => localError = 'Please enter a title (e.g. Facebook)');
-                                    return;
-                                  }
-                                  if (username.isEmpty) {
-                                    setModalState(() => localError = 'Please enter username or email');
-                                    return;
-                                  }
-                                  if (password.isEmpty) {
-                                    setModalState(() => localError = 'Please enter a password');
-                                    return;
-                                  }
+                                        if (title.isEmpty) {
+                                          setModalState(() => localError = 'Please enter a title (e.g. Facebook)');
+                                          return;
+                                        }
+                                        if (username.isEmpty) {
+                                          setModalState(() => localError = 'Please enter username or email');
+                                          return;
+                                        }
+                                        if (password.isEmpty) {
+                                          setModalState(() => localError = 'Please enter a password');
+                                          return;
+                                        }
 
-                                  final cat = store.vaultCategories.firstWhere(
-                                    (c) => c.name.toLowerCase() == selectedCategory.toLowerCase(),
-                                    orElse: () => const VaultCategory(id: 'work', name: 'Work', emoji: '📁'),
-                                  );
+                                        final cat = store.vaultCategories.firstWhere(
+                                          (c) => c.name.toLowerCase() == selectedCategory.toLowerCase(),
+                                          orElse: () => const VaultCategory(id: 'work', name: 'Work', emoji: 'folder'),
+                                        );
 
-                                  store.updateVaultItem(
-                                    id: item.id,
-                                    title: title,
-                                    username: username,
-                                    password: password,
-                                    group: cat.name,
-                                    website: website.isNotEmpty ? website : null,
-                                    notes: notes.isNotEmpty ? notes : null,
-                                    iconEmoji: cat.emoji,
-                                  );
+                                        setModalState(() {
+                                          localError = null;
+                                          isSubmitting = true;
+                                        });
+                                        HapticFeedback.mediumImpact();
+                                        await Future.delayed(const Duration(milliseconds: 260));
 
-                                  HapticFeedback.lightImpact();
-                                  Navigator.of(sheetCtx).pop();
-                                  showAppSnackBar(parentContext, 'Password for "$title" updated!');
-                                },
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(FLucideIcons.check, size: 15, color: theme.colors.primaryForeground),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Save Changes',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14,
-                                        color: theme.colors.primaryForeground,
-                                      ),
-                                    ),
-                                  ],
+                                        store.updateVaultItem(
+                                          id: item.id,
+                                          title: title,
+                                          username: username,
+                                          password: password,
+                                          group: cat.name,
+                                          website: website.isNotEmpty ? website : null,
+                                          notes: notes.isNotEmpty ? notes : null,
+                                          iconEmoji: cat.emoji,
+                                        );
+
+                                        if (sheetCtx.mounted) {
+                                          Navigator.of(sheetCtx).pop();
+                                        }
+                                        if (parentContext.mounted) {
+                                          showAppSnackBar(parentContext, 'Password for "$title" updated!');
+                                        }
+                                      },
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 180),
+                                  child: isSubmitting
+                                      ? SizedBox(
+                                          key: const ValueKey('edit_pw_spinner'),
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.2,
+                                            color: theme.colors.primaryForeground,
+                                          ),
+                                        )
+                                      : Row(
+                                          key: const ValueKey('edit_pw_content'),
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(FLucideIcons.check, size: 15, color: theme.colors.primaryForeground),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'Save Changes',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14,
+                                                color: theme.colors.primaryForeground,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                 ),
                               ),
                             ),
@@ -2902,8 +3107,7 @@ class _VaultViewState extends State<VaultView> {
                         ],
                       const SizedBox(width: 6),
                       // Add Category Action Button in strip
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
+                      AnimatedPressable(
                         onTap: () {
                           HapticFeedback.lightImpact();
                           _showAddCategoryDialog(context);
@@ -2977,12 +3181,27 @@ class _VaultViewState extends State<VaultView> {
                     ),
                   ),
                 ] else ...[
-                  for (final item in filteredItems) ...[
-                    _VaultCredentialCard(
-                      item: item,
-                      onEdit: () => _showEditPasswordDrawer(context, item),
-                      onDelete: () => _confirmDelete(context, item),
-                      onShowDetails: () => _showItemDetailsSheet(context, item),
+                  for (var i = 0; i < filteredItems.length; i++) ...[
+                    TweenAnimationBuilder<double>(
+                      key: ValueKey(filteredItems[i].id),
+                      tween: Tween<double>(begin: 0.0, end: 1.0),
+                      duration: Duration(milliseconds: 220 + (i * 40).clamp(0, 300)),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, child) {
+                        return Opacity(
+                          opacity: value,
+                          child: Transform.translate(
+                            offset: Offset(0, 16 * (1.0 - value)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: _VaultCredentialCard(
+                        item: filteredItems[i],
+                        onEdit: () => _showEditPasswordDrawer(context, filteredItems[i]),
+                        onDelete: () => _confirmDelete(context, filteredItems[i]),
+                        onShowDetails: () => _showItemDetailsSheet(context, filteredItems[i]),
+                      ),
                     ),
                     const SizedBox(height: 10),
                   ],
@@ -2991,36 +3210,35 @@ class _VaultViewState extends State<VaultView> {
             ),
           ),
 
-          // 4. Floating Action Button (Single Primary FAB)
-            Positioned(
-              bottom: 12,
-              right: 12,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  _showAddPasswordDrawer(context);
-                },
-                child: Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: theme.colors.primary,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.colors.primary.withValues(alpha: 0.38),
-                        blurRadius: 14,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Icon(FLucideIcons.plus, size: 26, color: theme.colors.primaryForeground),
-                  ),
+          // 4. Floating Action Button (Single Primary FAB) with tactile press bounce
+          Positioned(
+            bottom: 12,
+            right: 12,
+            child: AnimatedPressable(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                _showAddPasswordDrawer(context);
+              },
+              child: Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: theme.colors.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: theme.colors.primary.withValues(alpha: 0.38),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Icon(FLucideIcons.plus, size: 26, color: theme.colors.primaryForeground),
                 ),
               ),
             ),
+          ),
           ],
         );
       },
@@ -3264,8 +3482,7 @@ class _VaultCredentialCardState extends State<_VaultCredentialCard> {
                 ),
 
                 // Button to Show Details
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                AnimatedPressable(
                   onTap: () {
                     HapticFeedback.lightImpact();
                     widget.onShowDetails();
@@ -3372,14 +3589,18 @@ class _VaultCredentialCardState extends State<_VaultCredentialCard> {
                         ),
                       ),
                       Expanded(
-                        child: Text(
-                          _revealed ? widget.item.password : '••••••••••••',
-                          style: TextStyle(
-                            fontSize: _revealed ? 12.5 : 12,
-                            letterSpacing: _revealed ? 0 : 1.5,
-                            color: theme.colors.foreground,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child: Text(
+                            _revealed ? widget.item.password : '••••••••••••',
+                            key: ValueKey(_revealed),
+                            style: TextStyle(
+                              fontSize: _revealed ? 12.5 : 12,
+                              letterSpacing: _revealed ? 0 : 1.5,
+                              color: theme.colors.foreground,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       GestureDetector(
@@ -3491,8 +3712,7 @@ class _VaultCredentialCardState extends State<_VaultCredentialCard> {
                     ),
                   ],
                 ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                AnimatedPressable(
                   onTap: () {
                     HapticFeedback.lightImpact();
                     widget.onEdit();
@@ -3590,6 +3810,7 @@ class _ProfileViewState extends State<ProfileView> {
     final mobileController = TextEditingController(text: rawMobile);
     String selectedGender = user?.gender ?? 'Male';
     String? localError;
+    bool isSubmitting = false;
 
     showModalBottomSheet<void>(
       context: context,
@@ -3935,51 +4156,75 @@ class _ProfileViewState extends State<ProfileView> {
                                 borderRadius: BorderRadius.circular(23),
                               ),
                             ),
-                            onPressed: () async {
-                              final name = nameController.text.trim();
-                              if (name.isEmpty) {
-                                setModalState(() => localError = 'Please enter your full name');
-                                return;
-                              }
+                            onPressed: isSubmitting
+                                ? null
+                                : () async {
+                                    final name = nameController.text.trim();
+                                    if (name.isEmpty) {
+                                      setModalState(() => localError = 'Please enter your full name');
+                                      return;
+                                    }
 
-                              // Preserve existing email and phone credentials (read-only)
-                              final userEmail = user?.email ?? emailController.text.trim();
-                              final userMobile = user?.mobile ?? '+91${mobileController.text.trim()}';
+                                    // Preserve existing email and phone credentials (read-only)
+                                    final userEmail = user?.email ?? emailController.text.trim();
+                                    final userMobile = user?.mobile ?? '+91${mobileController.text.trim()}';
 
-                              try {
-                                await AuthService.instance.updateProfile(
-                                  name: name,
-                                  email: userEmail,
-                                  mobile: userMobile,
-                                  gender: selectedGender,
-                                );
-                                HapticFeedback.lightImpact();
-                              } catch (e) {
-                                setModalState(() => localError = e.toString().replaceFirst('Exception: ', ''));
-                                return;
-                              }
+                                    setModalState(() {
+                                      localError = null;
+                                      isSubmitting = true;
+                                    });
 
-                              if (sheetCtx.mounted) {
-                                Navigator.of(sheetCtx).pop();
-                              }
-                              if (parentContext.mounted) {
-                                _showFeedbackSnackBar(parentContext, 'Profile updated successfully!');
-                              }
-                            },
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(FLucideIcons.check, size: 16),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Save Profile Changes',
-                                  style: TextStyle(
-                                    fontSize: 14.5,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: -0.2,
-                                  ),
-                                ),
-                              ],
+                                    try {
+                                      await AuthService.instance.updateProfile(
+                                        name: name,
+                                        email: userEmail,
+                                        mobile: userMobile,
+                                        gender: selectedGender,
+                                      );
+                                      HapticFeedback.lightImpact();
+                                    } catch (e) {
+                                      setModalState(() {
+                                        localError = e.toString().replaceFirst('Exception: ', '');
+                                        isSubmitting = false;
+                                      });
+                                      return;
+                                    }
+
+                                    if (sheetCtx.mounted) {
+                                      Navigator.of(sheetCtx).pop();
+                                    }
+                                    if (parentContext.mounted) {
+                                      _showFeedbackSnackBar(parentContext, 'Profile updated successfully!');
+                                    }
+                                  },
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 180),
+                              child: isSubmitting
+                                  ? SizedBox(
+                                      key: const ValueKey('profile_spinner'),
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.2,
+                                        color: theme.colors.primaryForeground,
+                                      ),
+                                    )
+                                  : const Row(
+                                      key: ValueKey('profile_content'),
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(FLucideIcons.check, size: 16),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'Save Profile Changes',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: -0.2,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                             ),
                           ),
                         ),
@@ -4123,6 +4368,7 @@ class _ProfileViewState extends State<ProfileView> {
     bool obscureNew = true;
     bool obscureConfirm = true;
     String? localError;
+    bool isSubmitting = false;
 
     showModalBottomSheet<void>(
       context: context,
@@ -4357,53 +4603,77 @@ class _ProfileViewState extends State<ProfileView> {
                                 borderRadius: BorderRadius.circular(23),
                               ),
                             ),
-                            onPressed: () async {
-                              final oldPin = currentPinController.text.trim();
-                              final newPin = newPinController.text.trim();
-                              final confirm = confirmPinController.text.trim();
+                            onPressed: isSubmitting
+                                ? null
+                                : () async {
+                                    final oldPin = currentPinController.text.trim();
+                                    final newPin = newPinController.text.trim();
+                                    final confirm = confirmPinController.text.trim();
 
-                              if (oldPin.length != 6) {
-                                setModalState(() => localError = 'Current PIN must be 6 digits');
-                                return;
-                              }
-                              if (newPin.length != 6) {
-                                setModalState(() => localError = 'New PIN must be exactly 6 digits');
-                                return;
-                              }
-                              if (newPin != confirm) {
-                                setModalState(() => localError = 'New PIN and confirmation do not match');
-                                return;
-                              }
+                                    if (oldPin.length != 6) {
+                                      setModalState(() => localError = 'Current PIN must be 6 digits');
+                                      return;
+                                    }
+                                    if (newPin.length != 6) {
+                                      setModalState(() => localError = 'New PIN must be exactly 6 digits');
+                                      return;
+                                    }
+                                    if (newPin != confirm) {
+                                      setModalState(() => localError = 'New PIN and confirmation do not match');
+                                      return;
+                                    }
 
-                              try {
-                                await AuthService.instance.updatePin(oldPin: oldPin, newPin: newPin);
-                                HapticFeedback.lightImpact();
-                              } catch (e) {
-                                setModalState(() => localError = e.toString().replaceFirst('Exception: ', ''));
-                                return;
-                              }
+                                    setModalState(() {
+                                      localError = null;
+                                      isSubmitting = true;
+                                    });
 
-                              if (sheetCtx.mounted) {
-                                Navigator.of(sheetCtx).pop();
-                              }
-                              if (parentContext.mounted) {
-                                _showFeedbackSnackBar(parentContext, 'Security PIN successfully updated!');
-                              }
-                            },
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'Save New PIN',
-                                  style: TextStyle(
-                                    fontSize: 14.5,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: -0.2,
-                                  ),
-                                ),
-                                SizedBox(width: 6),
-                                Icon(FLucideIcons.arrowRight, size: 15),
-                              ],
+                                    try {
+                                      await AuthService.instance.updatePin(oldPin: oldPin, newPin: newPin);
+                                      HapticFeedback.lightImpact();
+                                    } catch (e) {
+                                      setModalState(() {
+                                        localError = e.toString().replaceFirst('Exception: ', '');
+                                        isSubmitting = false;
+                                      });
+                                      return;
+                                    }
+
+                                    if (sheetCtx.mounted) {
+                                      Navigator.of(sheetCtx).pop();
+                                    }
+                                    if (parentContext.mounted) {
+                                      _showFeedbackSnackBar(parentContext, 'Security PIN successfully updated!');
+                                    }
+                                  },
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 180),
+                              child: isSubmitting
+                                  ? SizedBox(
+                                      key: const ValueKey('pin_spinner'),
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.2,
+                                        color: theme.colors.primaryForeground,
+                                      ),
+                                    )
+                                  : const Row(
+                                      key: ValueKey('pin_content'),
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          'Save New PIN',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: -0.2,
+                                          ),
+                                        ),
+                                        SizedBox(width: 6),
+                                        Icon(FLucideIcons.arrowRight, size: 15),
+                                      ],
+                                    ),
                             ),
                           ),
                         ),
